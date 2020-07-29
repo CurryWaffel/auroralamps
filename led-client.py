@@ -28,6 +28,7 @@ lastBefehl = ""
 # Define functions which animate LEDs in various ways.
 def colorWipe(strip, color, wait_ms=50):
         ct = threading.currentThread()
+
 	"""Wipe color across display a pixel at a time."""
 	for i in range(strip.numPixels()):
                 if not getattr(ct, "change", False):
@@ -68,6 +69,16 @@ def wheel(pos):
 	else:
 		pos -= 170
 		return Color(0, pos * 3, 255 - pos * 3)
+
+def setColor(strip, color):
+        ct = threading.currentThread()
+        for i in range(strip.numPixels()):
+                if not getattr(ct, "change", False):
+                        strip.setPixelColor(i, color)
+                        strip.show()
+                else:
+                        print("Applying change now...")
+                        return
 
 def rainbow(strip, wait_ms=20, iterations=1):
         ct = threading.currentThread()
@@ -111,6 +122,7 @@ def requestLoop():
 		befehl = ''.join(f.read().split('\n'))
 
 		if befehl == "09":
+                        print("Purging requestLoop!")
                         break
 
                 if not t.isAlive():
@@ -128,6 +140,7 @@ def ledLoop():
 	try:
                 while True:
                         if befehl == "01":
+                                setColor(strip, Color(127, 127, 127)) # White fresh ground
                                 colorWipe(strip, Color(255, 0, 0)) # Red wipe
                                 colorWipe(strip, Color(0, 255, 0)) # Blue wipe
                                 colorWipe(strip, Color(0, 0, 255)) # Green wipe
@@ -142,7 +155,7 @@ def ledLoop():
                         elif befehl == "05":
                                 theaterChaseRainbow(strip)
                         else:
-                                colorWipe(strip, Color(0,0,0), 10)
+                                setColor(strip, Color(0,0,0))
 
                         threading.currentThread().change = False
 
@@ -177,4 +190,9 @@ if __name__ == '__main__':
         print("Starting requestLoop")
         t2.start()
         t2.join()
+
+        f = open("/var/www/html/led-server/befehl.txt", "w")
+        f.write("03")
+        f.close()
+        
         print("EndofProgramm!")
