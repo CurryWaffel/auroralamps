@@ -1,2 +1,1 @@
-x = int()
-print(isinstance(x, int))
+print(open("./test/befehl.txt", "r").read().split("---"))
