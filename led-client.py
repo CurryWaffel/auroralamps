@@ -13,6 +13,7 @@ import threading
 import copy
 from neopixel import *
 import argparse
+import inspect
 
 # LED strip configuration:
 LED_COUNT = 300 # Number of LED pixels.
@@ -26,6 +27,8 @@ LED_CHANNEL = 0 # set to '1' for GPIOs 13, 19, 41, 45 or 53
 befehl = ""
 lastBefehl = ""
 lastArgs = []
+lastParsed = []
+isParsed = False
 t2 = threading.Thread()
 t3 = threading.Thread()
 
@@ -36,29 +39,50 @@ class StripMethods:
         def colorWipe(strip, color, wait_ms=50):
                 ct = threading.currentThread()
 
+                global lastParsed
+                global isParsed
+                parsedArgs = []
+                if (isParsed):
+                        parsedArgs = lastParsed
+                else:
+                        parsedArgs = parseArguments([color, wait_ms], [Color, int], ["color", "wait_ms"])
+                        lastParsed = parsedArgs
+                        isParsed = True
+
                 """Wipe color across display a pixel at a time."""
                 for i in range(strip.numPixels()):
                         if not getattr(ct, "change", False):
-                                strip.setPixelColor(i, color)
+                                strip.setPixelColor(i, parsedArgs["color"])
                                 strip.show()
-                                time.sleep(wait_ms/1000.0)
+                                time.sleep(parsedArgs["wait_ms"]/1000.0)
                         else:
                                 print("Applying change now...")
                                 return
         @staticmethod
         def theaterChase(strip, color, wait_ms=50, iterations=10):
                 ct = threading.currentThread()
+
+                global lastParsed
+                global isParsed
+                parsedArgs = []
+                if (isParsed):
+                        parsedArgs = lastParsed
+                else:
+                        parsedArgs = parseArguments([color, wait_ms, iterations], [Color, int, int], ["color", "wait_ms", "iterations"])
+                        lastParsed = parsedArgs
+                        isParsed = True
+
                 """Movie theater light style chaser animation."""
-                for j in range(iterations):
+                for j in range(parsedArgs["iterations"]):
                         for q in range(3):
                                 for i in range(0, strip.numPixels(), 3):
                                         if not getattr(ct, "change", False):
-                                                strip.setPixelColor(i+q, color)
+                                                strip.setPixelColor(i+q, parsedArgs["color"])
                                         else:
                                                 print("Applying change now...")
                                                 return
                                 strip.show()
-                                time.sleep(wait_ms/1000.0)
+                                time.sleep(parsedArgs["wait_ms"]/1000.0)
                                 for i in range(0, strip.numPixels(), 3):
                                         if not getattr(ct, "change", False):
                                                 strip.setPixelColor(i+q, 0)
@@ -81,14 +105,25 @@ class StripMethods:
         @staticmethod
         def setColor(strip, color):
                 ct = threading.currentThread()
+
+                global lastParsed
+                global isParsed
+                parsedArgs = []
+                if (isParsed):
+                        parsedArgs = lastParsed
+                else:
+                        parsedArgs = parseArguments([color], [Color], ["color"])
+                        lastParsed = parsedArgs
+                        isParsed = True
+
                 for i in range(strip.numPixels()):
                         if not getattr(ct, "change", False):
-                                strip.setPixelColor(i, color)
-                                strip.show()
+                                strip.setPixelColor(i, parsedArgs["color"])
                         else:
                                 print("Applying change now...")
                                 return
-
+                strip.show()
+                        
         @staticmethod
         def rainbow(strip, wait_ms=1, iterations=1):
                 ct = threading.currentThread()
@@ -111,6 +146,21 @@ class StripMethods:
                         #print("After wait")
 
         @staticmethod
+        def rainbowStationary(strip, wait_ms=1, iterations=1):
+                ct = threading.currentThread()
+                """Draw rainbow that fades across all pixels at once."""
+                for j in range(256*iterations):
+                        #print("Bruh")
+                        for i in range(strip.numPixels()):
+                                if not getattr(ct, "change", False):
+                                        #print("Setting Pixel #" + str(i))
+                                        strip.setPixelColor(i, StripMethods.wheel(j & 255))
+                                else:
+                                        print("Applying change now...")
+                                        return
+                        strip.show()
+
+        @staticmethod
         def rainbowCycle(strip, wait_ms=20, iterations=5):
                 """Draw rainbow that uniformly distributes itself across all pixels."""
                 for j in range(256*iterations):
@@ -131,12 +181,32 @@ class StripMethods:
                                 for i in range(0, strip.numPixels(), 3):
                                         strip.setPixelColor(i+q, 0)
 
+def parseArguments(argsarray, classarray, namesarray):
+        output = dict()
+        for e, c, n in zip(argsarray, classarray, namesarray):
+                if c is Color:
+                        print("------------------------")
+                        print("Parsing Color now")
+                        color = e.replace('[', '').replace(']', '').split(",")
+                        color = [ int(x) for x in color ]
+                        colorr = Color(color[1], color[0], color[2])
+                        output[n] = colorr
+                        print("Finished parsing Color: %s %s %s" % (color[1], color[0], color[2]))
+                elif c is int:
+                        print("------------------------")
+                        print("Parsing Int now")
+                        output[n] = int(e)
+                        print("Finished parsing Int: %s" % (output[n]))
+        
+        return output
+
 def requestLoop():
         try:
                 isAlive = False
                 while True:
                         global lastBefehl
                         global lastArgs
+                        global isParsed
                         global befehl
                         global t2
                         
@@ -171,16 +241,25 @@ def requestLoop():
                                 if lastBefehl == "terminate":
                                         return
 
+                                '''
                                 lastArgsSub = lines[2]
                                 #print("Last Args: " + lastArgsSub)
                                 colors = lastArgsSub.replace('[', '').replace(']', '').split(",")
                                 colors = [ int(x) for x in colors ]
                                 #print("Red: %s Green: %s Blue: %s" % (colors[0], colors[1], colors[2]))
-                                colors = Color(colors[1], colors[0], colors[2])
+                                '''
+                                if lastBefehl == "off":
+                                        lastBefehl = "setColor"
+                                        lastArgs = ["[0,0,0]"]
+                                else:
+                                        lastArgs = lines[2:]
 
-                                lastArgs = []
-                                lastArgs.append(colors)
+                                #lastArgs.append(lines[2])
+                                #lastArgs.append(lines[3])
+
                                 lastArgs.insert(0, strip)
+
+                                isParsed = False
 
                                 #print("Hey")
                                 #print(lastArgs)
@@ -207,54 +286,6 @@ def requestLoop():
         except KeyboardInterrupt:
                 print("Terminating programm")
 
-
-
-
-
-'''
-		if befehl == "09":
-                        print("Purging requestLoop!")
-                        break
-
-                if not t.isAlive():
-                                print("Starting LED\'s")
-                                t.start()
-
-		if befehl != lastBefehl:
-			lastBefehl = befehl     
-			print("Changing LED\'S")
-			t.change = True
-
-
-def ledLoop():
-        global befehl
-	try:
-                while True:
-                        if befehl == "01":
-                                StripMethods.setColor(strip, Color(127, 127, 127)) # White fresh ground
-                                StripMethods.colorWipe(strip, Color(255, 0, 0)) # Red wipe
-                                StripMethods.colorWipe(strip, Color(0, 255, 0)) # Blue wipe
-                                StripMethods.colorWipe(strip, Color(0, 0, 255)) # Green wipe
-                        elif befehl == "02":
-                                StripMethods.theaterChase(strip, Color(127, 127, 127))
-                                StripMethods.theaterChase(strip, Color(127, 0, 0))
-                                StripMethods.theaterChase(strip, Color( 0, 0, 127))
-                        elif befehl == "03":
-                                StripMethods.rainbow(strip)
-                        elif befehl == "04":
-                                StripMethods.rainbowCycle(strip)
-                        elif befehl == "05":
-                                StripMethods.theaterChaseRainbow(strip)
-                        else:
-                                StripMethods.setColor(strip, Color(0,0,0))
-
-                        threading.currentThread().change = False
-
-        except KeyboardInterrupt:
-                if args.clear:
-                        colorWipe(strip, Color(0,0,0), 10)
-'''
-
 # Main program logic follows:
 if __name__ == '__main__':
         # Process arguments
@@ -279,7 +310,7 @@ if __name__ == '__main__':
         t.join()
 
         f = open("/var/www/html/led-server/befehl.txt", "w")
-        f.write("01\ncolorWipe\n[114,0,171]\n")
+        f.write("01\ncolorWipe\n[114,0,171]\n1\n")
         f.close()
 
         print(threading.activeCount())
