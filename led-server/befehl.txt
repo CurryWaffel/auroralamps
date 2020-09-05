@@ -1,7 +1,2 @@
-01
----
-colorWipe
-[10,100,10]
----
-colorWipe
-[20,0,30]
+00
+---setColor[000]

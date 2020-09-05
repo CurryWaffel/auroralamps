@@ -25,21 +25,16 @@ LED_BRIGHTNESS = 255 # Set to 0 for darkest and 255 for brightest
 LED_INVERT = False # True to invert the signal (when using NPN transistor level shift)
 LED_CHANNEL = 0 # set to '1' for GPIOs 13, 19, 41, 45 or 53
 
-befehl = ""
-lastBefehl = ""
-lastArgs = []
-lastParsed = []
-isParsed = False
-
 befehlIterable = 0
 lastBefehle = []
 lastArgss = []
+lastParsed = []
+isParsed = False # TODO Implement check for parses with Array to reduce cpu usage on the long run
 
 t2 = threading.Thread()
 t3 = threading.Thread()
 
-
-class StripMethods:
+class StripMethods: # TODO Accurate timing (requires more calculating)
         # Define functions which animate LEDs in various ways.
         @staticmethod
         def colorWipe(strip, color, wait_ms=50):
@@ -62,7 +57,7 @@ class StripMethods:
                                 strip.show()
                                 time.sleep(parsedArgs["wait_ms"]/1000.0)
                         else:
-                                print("Applying change now...")
+                                #print("Applying change now...")
                                 return
 
         @staticmethod
@@ -86,7 +81,7 @@ class StripMethods:
                                         if not getattr(ct, "change", False):
                                                 strip.setPixelColor(i+q, parsedArgs["color"])
                                         else:
-                                                print("Applying change now...")
+                                                #print("Applying change now...")
                                                 return
                                 strip.show()
                                 time.sleep(parsedArgs["wait_ms"]/1000.0)
@@ -94,7 +89,7 @@ class StripMethods:
                                         if not getattr(ct, "change", False):
                                                 strip.setPixelColor(i+q, 0)
                                         else:
-                                                print("Applying change now...")
+                                                #print("Applying change now...")
                                                 return
 
         @staticmethod
@@ -127,7 +122,7 @@ class StripMethods:
                         if not getattr(ct, "change", False):
                                 strip.setPixelColor(i, parsedArgs["color"])
                         else:
-                                print("Applying change now...")
+                                #print("Applying change now...")
                                 return
                 strip.show()
                         
@@ -153,7 +148,7 @@ class StripMethods:
                                         #print("Setting Pixel #" + str(i))
                                         strip.setPixelColor(i, StripMethods.wheel((i+j) & 255))
                                 else:
-                                        print("Applying change now...")
+                                        #print("Applying change now...")
                                         return
                         #print("This that")
                         strip.show()
@@ -183,13 +178,13 @@ class StripMethods:
                                         #print("Setting Pixel #" + str(i))
                                         strip.setPixelColor(i, StripMethods.wheel(j & 255))
                                 else:
-                                        print("Applying change now...")
+                                        #print("Applying change now...")
                                         return
                         strip.show()
                         time.sleep(parsedArgs["wait_ms"]/1000.0)
 
         @staticmethod
-        def rainbowCycle(strip, wait_ms=20, iterations=5):
+        def rainbowCycle(strip, wait_ms=20, iterations=5): #TODO Apply Change
 
                 global lastParsed
                 global isParsed
@@ -209,7 +204,7 @@ class StripMethods:
                         time.sleep(parsedArgs["wait_ms"]/1000.0)
 
         @staticmethod
-        def theaterChaseRainbow(strip, wait_ms=50):
+        def theaterChaseRainbow(strip, wait_ms=50): #TODO Apply Change
 
                 global lastParsed
                 global isParsed
@@ -254,13 +249,10 @@ def requestLoop():
         try:
                 isAlive = False
                 while True:
-                        global lastBefehl
                         global lastBefehle
-                        global lastArgs
                         global lastArgss
                         global befehlIterable
                         global isParsed
-                        global befehl
                         global t2
                         
                         f = open("/var/www/html/led-server/befehl.txt", "r")
@@ -287,46 +279,26 @@ def requestLoop():
 
                                 lines[0] = "00\n"
 
-
-                                print("______________________________________ENTERING EXPERIMENTAL ZONE______________________________________")
+                                #print("______________________________________ENTERING EXPERIMENTAL ZONE______________________________________")
 
                                 parts = wholefile.split("---\n")
                                 parts = parts[1:]
-                                #print(lines)
-
-
-
-                                print(parts)
+                                #print(parts)
                                  
                                 lastBefehle = [ x.split("\n")[0] for x in parts ]
-                                print("---------Last Befehle:---------------")
-                                print(lastBefehle)
+                                #print("---------Last Befehle:---------------")
+                                #print(lastBefehle)
 
                                 lastArgss = [ x.split("\n")[1:] for x in parts ]
                                 for a in lastArgss:
                                         a.insert(0, strip)
-                                        a = a.remove("")
-                                print("---------Last Args:---------------")
-                                print(lastArgss)
-
-
-
-
-
-
-
-
-                                #lastBefehl = lines[1].split("\n")[0]
-                                #print("Last Befehl: " + lastBefehl)
-
-
+                                        while "" in a:
+                                                a.remove("")
+                                #print("---------Last Args:---------------")
+                                #print(lastArgss)
 
                                 if lastBefehle[0] == "terminate":
                                         return
-
-                                if lastBefehle[0] == "off":
-                                        lastBefehle[0] = "setColor"
-                                        lastArgss[0] = ["[0,0,0]"]
 
                                 isParsed = False
 
@@ -334,11 +306,9 @@ def requestLoop():
                                 f.writelines(lines)
                                 f.close()
 
-                                t2 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
+                                befehlIterable = 0
 
-                                befehlIterable += 1
-                                if befehlIterable >= len(lastBefehle):
-                                        befehlIterable = 0
+                                t2 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
 
                                 t2.daemon = True
                                 t2.start()
@@ -371,10 +341,7 @@ if __name__ == '__main__':
         # Intialize the library (must be called once before other functions).
         strip.begin()
 
-        print ('Press Ctrl-C to quit.\r\n Becca said hi!')
-        #print('Uwu')
-        if not args.clear:
-                print('Use "-c" argument to clear LEDs on exit')
+        print('Becca said hi!')
 
         #print("whats this?")
         t = threading.Thread(target=requestLoop)
@@ -383,7 +350,7 @@ if __name__ == '__main__':
         t.join()
 
         f = open("/var/www/html/led-server/befehl.txt", "w")
-        f.write("01\ncolorWipe\n[114,0,171]\n1\n")
+        f.write("01\n---\ncolorWipe\n[10,100,10]\n---\ncolorWipe\n[20,0,30]")
         f.close()
 
         print(threading.activeCount())
