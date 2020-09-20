@@ -16,7 +16,7 @@ import argparse
 import inspect
 
 # LED strip configuration:
-LED_COUNT = 300 # Number of LED pixels.
+LED_COUNT = 281 # Number of LED pixels.
 LED_PIN = 18 # GPIO pin connected to the pixels (18 uses PWM!).
 #LED_PIN = 10 # GPIO pin connected to the pixels (10 uses SPI /dev/spidev0.0).
 LED_FREQ_HZ = 800000 # LED signal frequency in hertz (usually 800khz)
@@ -25,11 +25,14 @@ LED_BRIGHTNESS = 255 # Set to 0 for darkest and 255 for brightest
 LED_INVERT = False # True to invert the signal (when using NPN transistor level shift)
 LED_CHANNEL = 0 # set to '1' for GPIOs 13, 19, 41, 45 or 53
 
+LEDS = []
 befehlIterable = 0
 lastBefehle = []
 lastArgss = []
 lastParsed = []
 isParsed = False # TODO Implement check for parses with Array to reduce cpu usage on the long run
+
+brightness = 1
 
 t2 = threading.Thread()
 t3 = threading.Thread()
@@ -53,7 +56,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                 """Wipe color across display a pixel at a time."""
                 for i in range(strip.numPixels()):
                         if not getattr(ct, "change", False):
-                                strip.setPixelColor(i, parsedArgs["color"])
+                                strip.setPixelColor(LEDS[i], parsedArgs["color"] * brightness)
                                 strip.show()
                                 time.sleep(parsedArgs["wait_ms"]/1000.0)
                         else:
@@ -79,7 +82,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         for q in range(3):
                                 for i in range(0, strip.numPixels(), 3):
                                         if not getattr(ct, "change", False):
-                                                strip.setPixelColor(i+q, parsedArgs["color"])
+                                                strip.setPixelColor(i+q, parsedArgs["color"] * brightness)
                                         else:
                                                 #print("Applying change now...")
                                                 return
@@ -120,7 +123,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
 
                 for i in range(strip.numPixels()):
                         if not getattr(ct, "change", False):
-                                strip.setPixelColor(i, parsedArgs["color"])
+                                strip.setPixelColor(i, parsedArgs["color"] * brightness)
                         else:
                                 #print("Applying change now...")
                                 return
@@ -146,7 +149,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         for i in range(strip.numPixels()):
                                 if not getattr(ct, "change", False):
                                         #print("Setting Pixel #" + str(i))
-                                        strip.setPixelColor(i, StripMethods.wheel((i+j) & 255))
+                                        strip.setPixelColor(LEDS[i], StripMethods.wheel((i+j) & 255) * brightness)
                                 else:
                                         #print("Applying change now...")
                                         return
@@ -176,7 +179,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         for i in range(strip.numPixels()):
                                 if not getattr(ct, "change", False):
                                         #print("Setting Pixel #" + str(i))
-                                        strip.setPixelColor(i, StripMethods.wheel(j & 255))
+                                        strip.setPixelColor(i, StripMethods.wheel(j & 255) * brightness)
                                 else:
                                         #print("Applying change now...")
                                         return
@@ -204,8 +207,8 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         time.sleep(parsedArgs["wait_ms"]/1000.0)
 
         @staticmethod
-        def theaterChaseRainbow(strip, wait_ms=50): #TODO Apply Change
-
+        def theaterChaseRainbow(strip, wait_ms=50):
+                ct = threading.currentThread()
                 global lastParsed
                 global isParsed
                 parsedArgs = []
@@ -220,11 +223,17 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                 for j in range(256):
                         for q in range(3):
                                 for i in range(0, strip.numPixels(), 3):
-                                        strip.setPixelColor(i+q, StripMethods.wheel((i+j) % 255))
+                                        if not getattr(ct, "change", False):
+                                                strip.setPixelColor(LEDS[i+q], StripMethods.wheel((i+j) % 255) * brightness)
+                                        else:
+                                                return
                                 strip.show()
                                 time.sleep(parsedArgs["wait_ms"]/1000.0)
                                 for i in range(0, strip.numPixels(), 3):
-                                        strip.setPixelColor(i+q, 0)
+                                        if not getattr(ct, "change", False):
+                                                strip.setPixelColor(LEDS[i+q], 0)
+                                        else:
+                                                return
 
 def parseArguments(argsarray, classarray, namesarray):
         output = dict()
@@ -244,6 +253,67 @@ def parseArguments(argsarray, classarray, namesarray):
                         #print("Finished parsing Int: %s" % (output[n]))
         
         return output
+
+def LED_Init():
+        for i in range(0, 33): #1-1
+                LEDS.append(i)
+        for i in range(275, 281): #1-2
+                LEDS.append(i)
+
+        for i in range(33, 67): #2-1
+                LEDS.append(i)
+        for i in range(228, 234): #2-2
+                LEDS.append(i)
+        
+        for i in range(234, 275): #3
+                LEDS.append(i)
+
+        for i in range(67, 87): #4-1
+                LEDS.append(i)
+        for i in range(208, 228): #4-2
+                LEDS.append(i)
+        
+        for i in range(87, 121): #5-1
+                LEDS.append(i)
+        for i in range(202, 208): #5-2
+                LEDS.append(i)
+
+        for i in range(162, 202): #6
+                LEDS.append(i)
+
+        for i in range(121, 162): #7
+                LEDS.append(i)
+
+        #######################################################################
+
+        for i in range(0, 33): #1-1
+                LEDS.append(i)
+        for i in range(275, 281): #1-2
+                LEDS.append(i)
+
+        for i in range(33, 67): #2-1
+                LEDS.append(i)
+        for i in range(228, 234): #2-2
+                LEDS.append(i)
+        
+        for i in range(234, 275): #3
+                LEDS.append(i)
+
+        for i in range(67, 87): #4-1
+                LEDS.append(i)
+        for i in range(208, 228): #4-2
+                LEDS.append(i)
+        
+        for i in range(87, 121): #5-1
+                LEDS.append(i)
+        for i in range(202, 208): #5-2
+                LEDS.append(i)
+
+        for i in range(162, 202): #6
+                LEDS.append(i)
+
+        for i in range(121, 162): #7
+                LEDS.append(i)
 
 def requestLoop():
         try:
@@ -310,6 +380,8 @@ def requestLoop():
 
                                 t2 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
 
+                                befehlIterable += 1
+
                                 t2.daemon = True
                                 t2.start()
                                 
@@ -317,12 +389,12 @@ def requestLoop():
 
                         elif not t2.isAlive() and isAlive:
                                 #print("Thread not alive anymore, starting again")
-                                t2 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
-                                isParsed = False
                                 befehlIterable += 1
                                 if befehlIterable >= len(lastBefehle):
                                         befehlIterable = 0
 
+                                t2 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
+                                isParsed = False
                                 t2.daemon = True
                                 t2.start()
 
@@ -340,6 +412,8 @@ if __name__ == '__main__':
         strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
         # Intialize the library (must be called once before other functions).
         strip.begin()
+
+        LED_Init()
 
         print('Becca said hi!')
 
