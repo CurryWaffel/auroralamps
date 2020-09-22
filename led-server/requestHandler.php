@@ -27,4 +27,17 @@
 
     file_put_contents("befehl.txt", $funcstring);
   }
+
+  if (isset($_POST['brightness'][0])) {
+    $funcstring = "01\n";
+    foreach ($_POST['brightness'] as $func) {
+      $parts = explode(";", $func);
+      $funcstring .= "---\n".$parts[0]."\n";
+      for ($i = 1; $i < sizeof($parts); $i++) {
+        $funcstring .= $parts[$i] . "\n";
+      }
+    }
+
+    file_put_contents("brightness.txt", $funcstring);
+  }
 ?>

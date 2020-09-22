@@ -32,8 +32,6 @@ lastArgss = []
 lastParsed = []
 isParsed = False # TODO Implement check for parses with Array to reduce cpu usage on the long run
 
-brightness = 1
-
 t2 = threading.Thread()
 t3 = threading.Thread()
 
@@ -56,7 +54,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                 """Wipe color across display a pixel at a time."""
                 for i in range(strip.numPixels()):
                         if not getattr(ct, "change", False):
-                                strip.setPixelColor(LEDS[i], parsedArgs["color"] * brightness)
+                                strip.setPixelColor(LEDS[i], parsedArgs["color"])
                                 strip.show()
                                 time.sleep(parsedArgs["wait_ms"]/1000.0)
                         else:
@@ -82,7 +80,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         for q in range(3):
                                 for i in range(0, strip.numPixels(), 3):
                                         if not getattr(ct, "change", False):
-                                                strip.setPixelColor(i+q, parsedArgs["color"] * brightness)
+                                                strip.setPixelColor(i+q, parsedArgs["color"])
                                         else:
                                                 #print("Applying change now...")
                                                 return
@@ -123,7 +121,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
 
                 for i in range(strip.numPixels()):
                         if not getattr(ct, "change", False):
-                                strip.setPixelColor(i, parsedArgs["color"] * brightness)
+                                strip.setPixelColor(i, parsedArgs["color"])
                         else:
                                 #print("Applying change now...")
                                 return
@@ -149,7 +147,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         for i in range(strip.numPixels()):
                                 if not getattr(ct, "change", False):
                                         #print("Setting Pixel #" + str(i))
-                                        strip.setPixelColor(LEDS[i], StripMethods.wheel((i+j) & 255) * brightness)
+                                        strip.setPixelColor(LEDS[i], StripMethods.wheel((i+j) & 255))
                                 else:
                                         #print("Applying change now...")
                                         return
@@ -179,7 +177,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         for i in range(strip.numPixels()):
                                 if not getattr(ct, "change", False):
                                         #print("Setting Pixel #" + str(i))
-                                        strip.setPixelColor(i, StripMethods.wheel(j & 255) * brightness)
+                                        strip.setPixelColor(i, StripMethods.wheel(j & 255))
                                 else:
                                         #print("Applying change now...")
                                         return
@@ -224,7 +222,7 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         for q in range(3):
                                 for i in range(0, strip.numPixels(), 3):
                                         if not getattr(ct, "change", False):
-                                                strip.setPixelColor(LEDS[i+q], StripMethods.wheel((i+j) % 255) * brightness)
+                                                strip.setPixelColor(LEDS[i+q], StripMethods.wheel((i+j) % 255))
                                         else:
                                                 return
                                 strip.show()
@@ -234,6 +232,58 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                                                 strip.setPixelColor(LEDS[i+q], 0)
                                         else:
                                                 return
+        
+        @staticmethod
+        def interpolate(strip, color, color2, duration_ms):
+                ct = threading.currentThread()
+                global lastParsed
+                global isParsed
+                parsedArgs = []
+                if (isParsed):
+                        parsedArgs = lastParsed
+                else:
+                        parsedArgs = parseArguments([color, color2, duration_ms], [Color, Color, int], ["color", "color2", "duration_ms"])
+                        lastParsed = parsedArgs
+                        isParsed = True
+
+                """Interpolation between two colors"""
+
+                StripMethods.setColor(strip, parsedArgs["color"]) # Show first color
+
+                # Parse both colors to array
+                parsedcol = parseColor(parsedArgs["color"])
+                parsedcol2 = parseColor(parsedArgs["color2"])
+                coldiff = [parsedcol2[0] - parsedcol[0], parsedcol2[1] - parsedcol[1], parsedcol2[2] - parsedcol[2]]
+
+                now = int(round(time.time() * 1000))
+                milli_sec = now + parsedArgs["duration_ms"]
+
+                diff = milli_sec - now
+
+                while (diff > 0):
+                        #print("Now: " + str(now))
+                        #print("Diff: " + str(diff))
+                        #print("Factor: " + str(1/parsedArgs["duration_ms"]))
+                        #print("X: " + str(parsedArgs['duration_ms'] - diff))
+                        factor = (float(1)/float(parsedArgs["duration_ms"])) * float(parsedArgs['duration_ms'] - diff)
+                        #print(factor)
+
+                        coltorender = Color(int(round(float(coldiff[1])*factor + parsedcol[1])),
+                                int(round(float(coldiff[0])*factor + parsedcol[0])),
+                                int(round(float(coldiff[2])*factor + parsedcol[2])))
+
+                        #print(coltorender)
+
+                        for i in range(strip.numPixels()):
+                                if not getattr(ct, "change", False):
+                                        strip.setPixelColor(i, coltorender)
+                                else:
+                                        #print("Applying change now...")
+                                        return
+                        strip.show()
+
+                        now = int(round(time.time() * 1000))
+                        diff = milli_sec - now
 
 def parseArguments(argsarray, classarray, namesarray):
         output = dict()
@@ -253,6 +303,14 @@ def parseArguments(argsarray, classarray, namesarray):
                         #print("Finished parsing Int: %s" % (output[n]))
         
         return output
+
+def parseColor(color):
+        stri = "{0:b}".format(color)
+
+        for i in range(24 - len(stri)):
+                stri = "0" + stri
+
+        return [int(stri[8:16], 2), int(stri[0:8], 2), int(stri[16:24], 2)]
 
 def LED_Init():
         for i in range(0, 33): #1-1
@@ -380,7 +438,7 @@ def requestLoop():
 
                                 t2 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
 
-                                befehlIterable += 1
+                                #befehlIterable += 1
 
                                 t2.daemon = True
                                 t2.start()
@@ -397,6 +455,81 @@ def requestLoop():
                                 isParsed = False
                                 t2.daemon = True
                                 t2.start()
+
+        except KeyboardInterrupt:
+                print("Terminating programm")
+
+def brightnessLoop():
+        try:
+                isAlive = False
+                while True:
+                        global lastBefehle
+                        global lastArgss
+                        global befehlIterable
+                        global isParsed
+                        global t3
+                        
+                        f = open("/var/www/html/led-server/brightness.txt", "r")
+
+                        sub = f.readline().split("\n")
+                        try:
+                                change = int(sub[0])
+                        except ValueError:
+                                #print("Caught ValueError--------------------------------------------------------------------")
+                                change = 0
+                        f.close()
+
+                        if change:
+                                print("BRIGHTChange detected!")
+
+                                t3.change = True
+                                isAlive = False
+
+                                f = open("/var/www/html/led-server/brightness.txt", "r")
+                                wholefile = f.read()
+                                lines = wholefile.split("\n")
+                                f.close()
+
+                                lines[0] = "00\n"
+
+                                parts = wholefile.split("---\n")
+                                parts = parts[1:]
+
+                                lastSep = [ x.split("\n")[0] for x in parts ]
+                                #print("---------Last Befehle:---------------")
+                                #print(lastBefehle)
+
+                                lastSepArgs = [ x.split("\n")[1:] for x in parts ]
+                                for a in lastSepArgs:
+                                        a.insert(0, strip)
+                                        while "" in a:
+                                                a.remove("")
+                                #print("---------Last Args:---------------")
+                                #print(lastArgss)
+
+                                if len(lastSep) >= 1:
+                                        if lastSep[0] == "terminate":
+                                                return
+
+                                isParsed = False
+
+                                f = open("/var/www/html/led-server/brightness.txt", "w")
+                                f.writelines(lines)
+                                f.close()
+
+                                for idx, sep in enumerate(lastSep):
+                                        if (sep == "brightness"):
+                                                #print("hey")
+                                                #brightness = float(lastSepArgs[idx][1])
+                                                strip.setBrightness(int(lastSepArgs[idx][1]))
+                                                #print(strip.getBrightness())
+
+                                #t3 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
+
+                                #t3.daemon = True
+                                #t3.start()
+                                
+                                #isAlive = True
 
         except KeyboardInterrupt:
                 print("Terminating programm")
@@ -421,10 +554,20 @@ if __name__ == '__main__':
         t = threading.Thread(target=requestLoop)
         print("Starting requestLoop")
         t.start()
+
+        t1 = threading.Thread(target=brightnessLoop)
+        print("Starting brightnessLoop")
+        t1.start()
+
         t.join()
+        t1.join()
 
         f = open("/var/www/html/led-server/befehl.txt", "w")
         f.write("01\n---\ncolorWipe\n[10,100,10]\n---\ncolorWipe\n[20,0,30]")
+        f.close()
+
+        f = open("/var/www/html/led-server/brightness.txt", "w")
+        f.write("01\n---\nbrightness\n255")
         f.close()
 
         print(threading.activeCount())
