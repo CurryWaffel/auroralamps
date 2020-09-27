@@ -1,2 +1,2 @@
-00
----setColor[000]
+01
+---terminate

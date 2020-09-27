@@ -9,6 +9,8 @@
 # various animations on a strip of NeoPixels.
 
 import time
+import json
+import numpy
 import threading
 import copy
 from neopixel import *
@@ -26,6 +28,7 @@ LED_INVERT = False # True to invert the signal (when using NPN transistor level 
 LED_CHANNEL = 0 # set to '1' for GPIOs 13, 19, 41, 45 or 53
 
 LEDS = []
+settings = {}
 befehlIterable = 0
 lastBefehle = []
 lastArgss = []
@@ -284,6 +287,36 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
 
                         now = int(round(time.time() * 1000))
                         diff = milli_sec - now
+                
+                now = int(round(time.time() * 1000))
+                milli_sec = now + parsedArgs["duration_ms"]
+
+                diff = milli_sec - now
+                
+                while (diff > 0):
+                        #print("Now: " + str(now))
+                        #print("Diff: " + str(diff))
+                        #print("Factor: " + str(1/parsedArgs["duration_ms"]))
+                        #print("X: " + str(parsedArgs['duration_ms'] - diff))
+                        factor = (float(1)/float(parsedArgs["duration_ms"])) * float(parsedArgs['duration_ms'] - diff)
+                        #print(factor)
+
+                        coltorender = Color(int(round(float(-coldiff[1])*factor + parsedcol2[1])),
+                                int(round(float(-coldiff[0])*factor + parsedcol2[0])),
+                                int(round(float(-coldiff[2])*factor + parsedcol2[2])))
+
+                        #print(coltorender)
+
+                        for i in range(strip.numPixels()):
+                                if not getattr(ct, "change", False):
+                                        strip.setPixelColor(i, coltorender)
+                                else:
+                                        #print("Applying change now...")
+                                        return
+                        strip.show()
+
+                        now = int(round(time.time() * 1000))
+                        diff = milli_sec - now
 
 def parseArguments(argsarray, classarray, namesarray):
         output = dict()
@@ -405,9 +438,10 @@ def requestLoop():
                                 lines = wholefile.split("\n")
                                 f.close()
 
-                                lines[0] = "00\n"
+                                lines[0] = "00"
 
                                 #print("______________________________________ENTERING EXPERIMENTAL ZONE______________________________________")
+                                #print(wholefile)
 
                                 parts = wholefile.split("---\n")
                                 parts = parts[1:]
@@ -431,7 +465,7 @@ def requestLoop():
                                 isParsed = False
 
                                 f = open("/var/www/html/led-server/befehl.txt", "w")
-                                f.writelines(lines)
+                                f.writelines("\n".join(lines))
                                 f.close()
 
                                 befehlIterable = 0
@@ -470,15 +504,14 @@ def brightnessLoop():
                         global t3
                         
                         f = open("/var/www/html/led-server/brightness.txt", "r")
-
                         sub = f.readline().split("\n")
+                        f.close()
                         try:
                                 change = int(sub[0])
                         except ValueError:
                                 #print("Caught ValueError--------------------------------------------------------------------")
                                 change = 0
-                        f.close()
-
+                        
                         if change:
                                 print("BRIGHTChange detected!")
 
@@ -523,13 +556,16 @@ def brightnessLoop():
                                                 #brightness = float(lastSepArgs[idx][1])
                                                 strip.setBrightness(int(lastSepArgs[idx][1]))
                                                 #print(strip.getBrightness())
+                                                settings['brightness'] = int(lastSepArgs[idx][1])
+                                        elif (sep == "led_count"):
+                                                settings['led_count'] = int(lastSepArgs[idx][1])
 
-                                #t3 = threading.Thread(target=getattr(StripMethods, lastBefehle[befehlIterable]), args=tuple(lastArgss[befehlIterable]))
+                                #print(settings)
+                                #print(json.dumps(settings))
 
-                                #t3.daemon = True
-                                #t3.start()
-                                
-                                #isAlive = True
+                                f = open("/var/www/html/led-server/settings.txt", "w")
+                                f.write(json.dumps(settings))
+                                f.close()
 
         except KeyboardInterrupt:
                 print("Terminating programm")
@@ -541,12 +577,103 @@ if __name__ == '__main__':
         parser.add_argument('-c', '--clear', action='store_true', help='clear the display on exit')
         args = parser.parse_args()
 
+        
+
+        ##########################################################################################################################################################
+
+        f = open("/var/www/html/led-server/befehl.txt", "r")
+        wholefile = f.read()
+        #print(wholefile)
+        lines = wholefile.split("\n")
+        f.close()
+
+        f = open("/var/www/html/led-server/befehl.txt", "w")
+        lines[0] = "01"
+        f.writelines("\n".join(lines))
+        f.close()
+
+        f = open("/var/www/html/led-server/brightness.txt", "r")
+        wholefile = f.read()
+        lines = wholefile.split("\n")
+        f.close()
+
+        f = open("/var/www/html/led-server/brightness.txt", "w")
+        lines[0] = "01"
+        f.writelines("\n".join(lines))
+        f.close()
+
+        LED_Init()
+
+        f = open("/var/www/html/led-server/settings.txt", "r")
+        #print(f.read())
+        settings = json.loads(f.read())
+
+        led_config = []
+        part = []
+        for i in range(0, 33): #1-1
+                part.append(i)
+        for i in range(275, 281): #1-2
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(33, 67): #2-1
+                part.append(i)
+        for i in range(228, 234): #2-2
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(234, 275): #3
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(67, 87): #4-1
+                part.append(i)
+        for i in range(208, 228): #4-2
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(87, 121): #5-1
+                part.append(i)
+        for i in range(202, 208): #5-2
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(162, 202): #6
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(121, 162): #7
+                part.append(i)
+        led_config.append(part)
+
+        settings['led_config'] = led_config
+
+        concatarray = []
+        for e in settings['led_config']:
+                concatarray = numpy.concatenate((concatarray, e))
+
+        LEDS = concatarray.astype(int)
+        print(LEDS)
+
+        #print(settings)
+        #print(settings['led_config'])
+        f.close()
+
+
+
+
+
+
+
+
+        ##################################################################################################################################################################
+
         # Create NeoPixel object with appropriate configuration.
-        strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL)
+        strip = Adafruit_NeoPixel(settings.get('led_count', LED_COUNT), LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, settings.get('brightness', LED_BRIGHTNESS), LED_CHANNEL)
         # Intialize the library (must be called once before other functions).
         strip.begin()
 
-        LED_Init()
+        
 
         print('Becca said hi!')
 
@@ -563,11 +690,11 @@ if __name__ == '__main__':
         t1.join()
 
         f = open("/var/www/html/led-server/befehl.txt", "w")
-        f.write("01\n---\ncolorWipe\n[10,100,10]\n---\ncolorWipe\n[20,0,30]")
+        f.write("01\n---\nrainbow\n50")
         f.close()
 
         f = open("/var/www/html/led-server/brightness.txt", "w")
-        f.write("01\n---\nbrightness\n255")
+        f.write("01\n---\nbrightness\n50")
         f.close()
 
         print(threading.activeCount())
