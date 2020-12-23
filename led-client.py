@@ -1,46 +1,39 @@
 #!/usr/bin/env python3
-# NeoPixel library strandtest example
-# Author: Tony DiCola (tony@tonydicola.com)
+# Driver for AuroraLamp based on the NeoPixel library
+# Author: Max Ruesch (xammaximus44@gmail.com)
 #
-# Edited by: staticfloat.de
-# Edit note: Extended the script by using an textfile to determine the current used function.
-#
-# Direct port of the Arduino NeoPixel library strandtest example. Showcases
-# various animations on a strip of NeoPixels.
+# Uses a direct port of the Arduino Neopixel library created by Tony DiCola (tony@tonydicola.com)
 
 import time
 import json
 import numpy
 import threading
-import copy
 from neopixel import *
 
 # LED strip configuration:
 LED_COUNT = 281 # Number of LED pixels.
-LED_PIN = 18 # GPIO pin connected to the pixels (18 uses PWM!).
-#LED_PIN = 10 # GPIO pin connected to the pixels (10 uses SPI /dev/spidev0.0).
+LED_PIN = 18 # GPIO pin connected to the pixels (18 uses PWM, has to be disabled before use).
 LED_FREQ_HZ = 800000 # LED signal frequency in hertz (usually 800khz)
-LED_DMA = 10 # DMA channel to use for generating signal (try 10)
+LED_DMA = 10 # DMA channel to use for generating signal
 LED_BRIGHTNESS = 255 # Set to 0 for darkest and 255 for brightest
 LED_INVERT = False # True to invert the signal (when using NPN transistor level shift)
 LED_CHANNEL = 0 # set to '1' for GPIOs 13, 19, 41, 45 or 53
 
+# Initalization on global variables
 settings = {}
-befehlIterable = 0
 dicty = {}
+mainListThread = threading.Thread()
 
-t2 = threading.Thread()
-t3 = threading.Thread()
+debug = True
 
-class StripMethods: # TODO Accurate timing (requires more calculating)
-        # Define functions which animate LEDs in various ways.
+# Class to contain all methods that can be used for commands.
+# Reason for contain is the dynamic method call in the thread start.
+class StripMethods: # TODO More accurate timing (requires more calculating)
         @staticmethod
         def colorWipe(args):
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
+                """Wipe color across display a pixel at a time"""
+                leds_to_use = get_leds_to_use(args)
 
-                """Wipe color across display a pixel at a time."""
                 for i in range(len(leds_to_use)):
                         if not getattr(threading.currentThread(), "change", False):
                                 strip.setPixelColor(leds_to_use[i], args["color"])
@@ -50,29 +43,29 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
 
         @staticmethod
         def theaterChase(args):
-                ct = threading.currentThread()
+                """Movie theater light style chaser animation"""
+                leds_to_use = get_leds_to_use(args)
 
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
-
-                """Movie theater light style chaser animation."""
                 for j in range(args["iterations"]):
                         for q in range(3):
+                                # Activate every 3rd led
                                 for i in range(0, len(leds_to_use), 3):
-                                        if not getattr(ct, "change", False):
+                                        if not getattr(threading.currentThread(), "change", False):
                                                 strip.setPixelColor(leds_to_use[i-q], args["color"])
                                         else: return
+
                                 strip.show()
                                 time.sleep(args["wait_ms"]/1000.0)
+
+                                # Deactivate every 3rd led
                                 for i in range(0, len(leds_to_use), 3):
-                                        if not getattr(ct, "change", False):
+                                        if not getattr(threading.currentThread(), "change", False):
                                                 strip.setPixelColor(leds_to_use[i-q], 0)
                                         else: return
 
         @staticmethod
         def wheel(pos):
-                """Generate rainbow colors across 0-255 positions."""
+                """Generate rainbow colors across 0-255 positions"""
                 if pos < 85:
                         return Color(pos * 3, 255 - pos * 3, 0)
                 elif pos < 170:
@@ -84,9 +77,8 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
 
         @staticmethod
         def setColor(args):
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
+                """Set a certain color for all given leds"""
+                leds_to_use = get_leds_to_use(args)
 
                 for i in range(len(leds_to_use)):
                         if not getattr(threading.currentThread(), "change", False):
@@ -96,11 +88,9 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         
         @staticmethod
         def rainbow(args):
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
+                """Draw rainbow that fades across all pixels at once"""
+                leds_to_use = get_leds_to_use(args)
 
-                """Draw rainbow that fades across all pixels at once."""
                 for j in range(256):
                         for i in range(len(leds_to_use)):
                                 if not getattr(threading.currentThread(), "change", False):
@@ -111,11 +101,9 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
 
         @staticmethod
         def rainbowStationary(args):
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
+                """Draw rainbow that fades across all pixels at once and doesnt move"""
+                leds_to_use = get_leds_to_use(args)
 
-                """Draw rainbow that fades across all pixels at once."""
                 for j in range(256):
                         for i in range(len(leds_to_use)):
                                 if not getattr(threading.currentThread(), "change", False):
@@ -125,12 +113,10 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         time.sleep(args["wait_ms"]/1000.0)
 
         @staticmethod
-        def rainbowCycle(args): #TODO implent
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
+        def rainbowCycle(args): #TODO implement in app
+                """Draw rainbow that uniformly distributes itself across all pixels"""
+                leds_to_use = get_leds_to_use(args)
 
-                """Draw rainbow that uniformly distributes itself across all pixels."""
                 for j in range(256*args["iterations"]):
                         for i in range(len(leds_to_use)):
                                 if not getattr(threading.currentThread(), "change", False):
@@ -141,63 +127,63 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
 
         @staticmethod
         def theaterChaseRainbow(args):
-                ct = threading.currentThread()
+                """Rainbow movie theater light style chaser animation"""
+                leds_to_use = get_leds_to_use(args)
 
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
-
-                """Rainbow movie theater light style chaser animation."""
                 for j in range(256):
                         for q in range(3):
                                 for i in range(0, len(leds_to_use), 3):
-                                        if not getattr(ct, "change", False):
+                                        if not getattr(threading.currentThread(), "change", False):
                                                 strip.setPixelColor(leds_to_use[i-q], StripMethods.wheel((i+j) % 255))
                                         else:
                                                 return
                                 strip.show()
                                 time.sleep(args["wait_ms"]/1000.0)
                                 for i in range(0, len(leds_to_use), 3):
-                                        if not getattr(ct, "change", False):
+                                        if not getattr(threading.currentThread(), "change", False):
                                                 strip.setPixelColor(leds_to_use[i-q], 0)
                                         else:
                                                 return
         
         @staticmethod
         def interpolate(args):
-                ct = threading.currentThread()
+                """Interpolation between two colors over given time"""
 
-                """Interpolation between two colors"""
+                # Show first color
+                StripMethods.setColor(args)
 
-                StripMethods.setColor(args) # Show first color
-
-                if not args.has_key('lamps'):
-                        args['lamps'] = [0,1,2,3,4,5,6]
-                leds_to_use = get_leds_to_use(args['lamps'])
+                leds_to_use = get_leds_to_use(args)
 
                 # Parse both colors to array
-                parsedcol = parseColor(args["color"])
-                parsedcol2 = parseColor(args["color2"])
-                coldiff = [parsedcol2[0] - parsedcol[0], parsedcol2[1] - parsedcol[1], parsedcol2[2] - parsedcol[2]]
+                parsedcol_1 = parseColor(args["color"])
+                parsedcol_2 = parseColor(args["color2"])
+                
+                # Calc difference of colors to apply over time
+                coldiff = [parsedcol_2[0] - parsedcol_1[0], parsedcol_2[1] - parsedcol_1[1], parsedcol_2[2] - parsedcol_1[2]]
 
+                # Calc initial time difference
                 now = int(round(time.time() * 1000))
                 milli_sec = now + args["duration_ms"]
                 diff = milli_sec - now
 
+                # Update leds according to time
                 while (diff > 0):
-                        factor = (float(1)/float(args["duration_ms"])) * float(args["duration_ms"] - diff)
+                        # Calc factor for color depending on how much time has passed
+                        factor = (1.0 / float(args["duration_ms"])) * float(args["duration_ms"] - diff)
 
-                        coltorender = Color(int(round(float(coldiff[1])*factor + parsedcol[1])),
-                                int(round(float(coldiff[0])*factor + parsedcol[0])),
-                                int(round(float(coldiff[2])*factor + parsedcol[2])))
+                        # Calc color to display at current time
+                        col_to_render = Color(int(round(float(coldiff[1]) * factor + parsedcol_1[1])),
+                                int(round(float(coldiff[0]) * factor + parsedcol_1[0])),
+                                int(round(float(coldiff[2]) * factor + parsedcol_1[2])))
 
+                        # Display current color on strip
                         for i in range(len(leds_to_use)):
-                                if not getattr(ct, "change", False):
-                                        strip.setPixelColor(leds_to_use[i], coltorender)
-                                else:
-                                        return
+                                if not getattr(threading.currentThread(), "change", False):
+                                        strip.setPixelColor(leds_to_use[i], col_to_render)
+                                else: return
                         strip.show()
 
+                        # Calc new time difference
                         now = int(round(time.time() * 1000))
                         diff = milli_sec - now
                 
@@ -207,32 +193,33 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         diff = milli_sec - now
                         
                         while (diff > 0):
-                                factor = (float(1)/float(args["duration_ms"])) * float(args['duration_ms'] - diff)
+                                # Calc factor for color depending on how much time has passed
+                                factor = (1.0 / float(args["duration_ms"])) * float(args['duration_ms'] - diff)
 
-                                coltorender = Color(int(round(float(-coldiff[1])*factor + parsedcol2[1])),
-                                        int(round(float(-coldiff[0])*factor + parsedcol2[0])),
-                                        int(round(float(-coldiff[2])*factor + parsedcol2[2])))
+                                # Calc color to display at current time
+                                col_to_render = Color(int(round(float(-coldiff[1]) * factor + parsedcol_2[1])),
+                                        int(round(float(-coldiff[0]) * factor + parsedcol_2[0])),
+                                        int(round(float(-coldiff[2]) * factor + parsedcol_2[2])))
 
+                                # Display current color on strip
                                 for i in range(len(leds_to_use)):
-                                        if not getattr(ct, "change", False):
-                                                strip.setPixelColor(leds_to_use[i], coltorender)
-                                        else:
-                                                return
+                                        if not getattr(threading.currentThread(), "change", False):
+                                                strip.setPixelColor(leds_to_use[i], col_to_render)
+                                        else: return
                                 strip.show()
 
+                                # Calc new time difference
                                 now = int(round(time.time() * 1000))
                                 diff = milli_sec - now
         
         @staticmethod
-        def wait(args):
-                ct = threading.currentThread()
-                
+        def wait(args):                
                 now = int(round(time.time()*1000))
                 milli_sec = now + args['duration_ms']
                 diff = milli_sec - now
 
                 while(diff > 0):
-                        if not getattr(ct, "change", False):
+                        if not getattr(threading.currentThread(), "change", False):
                                 time.sleep(0.01)
                         else:
                                 return
@@ -240,227 +227,239 @@ class StripMethods: # TODO Accurate timing (requires more calculating)
                         now = int(round(time.time() * 1000))
                         diff = milli_sec - now
 
+# Parse colors from 24 bit format to array RGB format
 def parseColor(color):
+        # Format string number from decimal to binary
         stri = "{0:b}".format(color)
 
+        # Add leading zeros until 24 bit width is reached
         for i in range(24 - len(stri)):
                 stri = "0" + stri
 
+        # Return array with numbers sliced and converted back to decimal
         return [int(stri[8:16], 2), int(stri[0:8], 2), int(stri[16:24], 2)]
 
-def get_leds_to_use(lamps):
-        a = []
-        for i, e in enumerate(settings['led_config']):
-                if i in lamps:
-                        a = numpy.concatenate((a, e))
+# Load leds to use from the args delivered with command
+def get_leds_to_use(args):
+        # Get the lamps to use
+        if not args.has_key('lamps'):
+                args['lamps'] = [0,1,2,3,4,5,6]
 
-        a = a.astype(int)
-        return a
+        leds = []
+        for i, e in enumerate(settings['led_config']):
+                if i in args['lamps']:
+                        leds = numpy.concatenate((leds, e))
+
+        return leds.astype(int)
+
+# Loading standard led config for the only lamp that exists (yet)
 def load_led_config():
         led_config = []
         part = []
-        for i in range(0, 33): #1-1
+        for i in range(0, 33): # Lamp 1 - Part 1
                 part.append(i)
-        for i in range(275, 281): #1-2
-                part.append(i)
-        led_config.append(part)
-        part = []
-        for i in range(33, 67): #2-1
-                part.append(i)
-        for i in range(228, 234): #2-2
+        for i in range(275, 281): # Lamp 1 - Part 2
                 part.append(i)
         led_config.append(part)
         part = []
-        for i in range(234, 275): #3
+        for i in range(33, 67): # Lamp 2 - Part 1
+                part.append(i)
+        for i in range(228, 234): # Lamp 2 - Part 2
                 part.append(i)
         led_config.append(part)
         part = []
-        for i in range(67, 87): #4-1
-                part.append(i)
-        for i in range(208, 228): #4-2
+        for i in range(234, 275): # Lamp 3
                 part.append(i)
         led_config.append(part)
         part = []
-        for i in range(87, 121): #5-1
+        for i in range(67, 87): # Lamp 3 - Part 1
                 part.append(i)
-        for i in range(202, 208): #5-2
-                part.append(i)
-        led_config.append(part)
-        part = []
-        for i in range(162, 202): #6
+        for i in range(208, 228): # Lamp 3 - Part 2
                 part.append(i)
         led_config.append(part)
         part = []
-        for i in range(121, 162): #7
+        for i in range(87, 121): # Lamp 5 - Part 1
+                part.append(i)
+        for i in range(202, 208): # Lamp 5 - Part 2
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(162, 202): # Lamp 6
+                part.append(i)
+        led_config.append(part)
+        part = []
+        for i in range(121, 162): # Lamp 7
                 part.append(i)
         led_config.append(part)
         return led_config
 
+# Main loop for changes and live modifications
 def requestLoop():
         while True:
                 global dicty
-                global befehlIterable
-                global t2
+                global mainListThread
                 
-                f = open("/var/www/html/led-server/change.txt", "r")
+                # Loading changes on both commands and settings
+                command_change_f = open("/var/www/html/led-server/change.txt", "r")
+                setting_change_f = open("/var/www/html/led-server/setting_change.txt", "r")
+                try: command_change = json.load(command_change_f)['change']
+                except ValueError: change = 0
 
-                try:
-                        change = json.load(f)['change']
-                except ValueError:
-                        change = 0
-                f.close()
+                try: setting_change = json.load(setting_change_f)['change']
+                except ValueError: change2 = 0
 
-                if change:
-                        #print("---------------------------------------------------------------------------------------------------------------------")
+                command_change_f.close()
+                setting_change_f.close()
+
+                # Change current command list if there is any change
+                if command_change:
+                        # Part from previous change for debug purposes
+                        if debug: print("---------------------------------------------------------------------------------------------------------------------")
                         
-                        f = open("/var/www/html/led-server/befehl.txt", "r")
-                        dicty = json.load(f)
-                        f.close()
+                        # Loading new command list from php modified file
+                        command_f = open("/var/www/html/led-server/befehl.txt", "r")
+                        dicty = json.load(command_f)
+                        if (debug): print(dicty)
+                        command_f.close()
 
-                        t2.change = True
+                        mainListThread.change = True
 
-                        if dicty[0][0]['command'] == "terminate":
-                                return
+                        # Terminate the loop, eq. to "STOP" in the app
+                        if dicty[0][0]['command'] == "terminate": return
 
-                        f = open("/var/www/html/led-server/change.txt", "w")
-                        json.dump({'change':0}, f)
-                        f.close()
-
-                        befehlIterable = 0
+                        # Unmarking change in change file
+                        command_change_f = open("/var/www/html/led-server/change.txt", "w")
+                        json.dump({'change':0}, command_change_f)
+                        command_change_f.close()
                         
-                        t2 = threading.Thread(target=listloop, args=tuple([dicty[0]]))
-                        t2.daemon = True
-                        t2.start()
+                        # Start a new thread with the command loop, start with first column of commands
+                        mainListThread = threading.Thread(target=listloop, args=tuple([dicty[0]]))
+                        mainListThread.daemon = True
+                        mainListThread.start()
+                
+                # Change Settings if there is any change
+                if setting_change:
+                        isAlive = False
+
+                        # Loading new settings from php modified file
+                        setting_f = open("/var/www/html/led-server/setting.txt", "r")
+                        try: dicti = json.load(setting_f)
+                        except ValueError: dicti = {}
+                        setting_f.close()
+
+                        # Unmarking change in change file
+                        setting_change_f = open("/var/www/html/led-server/setting_change.txt", "w")
+                        json.dump({'change':0}, setting_change_f)
+                        setting_change_f.close()
+
+                        # Changing current settings live if there is any change
+                        if dicti.has_key("brightness"):
+                                strip.setBrightness(int(dicti["brightness"]))
+                                settings['brightness'] = int(dicti["brightness"])
+                        if dicti.has_key("led_count"):
+                                settings['led_count'] = int(dicti["led_count"])
+
+                        # Writing current settings including change to the setting file that isnt modified by php
+                        settings_f = open("/var/www/html/led-server/settings.txt", "w")
+                        settings_f.write(json.dumps(settings))
+                        settings_f.close()
+
+# Main loop for commands
 def listloop(dictynum):
+        # Iterating variable for the current command list
         befehlIter = 0
-        #print("::::::::::::::::::::::::::::::::::::::::::::")
-        #print("Would do first column now!")
-        #print(dictynum)
-        #print("::::::::::::::::::::::::::::::::::::::::::::")
-
         
-        t4 = threading.Thread()
-        t5 = threading.Thread()
+        commandThread = threading.Thread() # Command thread for this list
+        listThread = threading.Thread() # New list thread that can be started from this list
 
+        # Indicator if the current list is finished
         finished = False
 
+        # Repeat while no change is indicated
         while not getattr(threading.currentThread(), "change", False):
-                if not t4.isAlive():
-                        if finished:
-                                break
-                        if dictynum[befehlIter]['command'] == "split":
-                                t5 = threading.Thread(target=listloop, args=tuple([dicty[dictynum[befehlIter]['args']['newList']]]))
-                                t5.loop = dictynum[befehlIter]['args']['looplist']
-                                t5.daemon = True
-                                t5.start()
-                        elif dictynum[befehlIter]['command'] == "join":
-                                if not dictynum[befehlIter]['args']['waitlist']:
-                                        t5.change = True
-                                elif t5.loop:
-                                        t5.finsignal = True
-                                t5.join()
+                # Only do something while the command thread for this list isnt active anymore
+                if not commandThread.isAlive():
+                        # If the list is done and not looped, break
+                        if finished: break
+
+                        # Processing current item in the command list
+                        currentItem = dictynum[befehlIter]
+                        if currentItem['command'] == "split":
+                                # Splitting means a new list thread is started using the list number indicated in /args/newList
+                                listThread = threading.Thread(target=listloop, args=tuple([dicty[currentItem['args']['newList']]]))
+                                listThread.loop = currentItem['args']['looplist']
+                                listThread.daemon = True
+                                listThread.start()
+                        elif currentItem['command'] == "join":
+                                # Joining means depending on the configuration, current thread either waits or cancels processing
+                                # of the list thread that was started fomr this thread
+                                if not currentItem['args']['waitlist']: listThread.change = True
+                                elif listThread.loop: listThread.finsignal = True
+                                listThread.join()
                         else:
-                                t4 = threading.Thread(target=getattr(StripMethods, dictynum[befehlIter]['command']), args=tuple([dictynum[befehlIter]['args']]))
-                                t4.daemon = True
-                                t4.start()
+                                commandThread = threading.Thread(target=getattr(StripMethods, currentItem['command']), args=tuple([currentItem['args']]))
+                                commandThread.daemon = True
+                                commandThread.start()
                         
+                        # Update the iterating variable
                         befehlIter += 1
                         
+                        # If the end of the list is reached, either reset the iterating variable or terminate the list after current command is processed,
+                        # depending on configuration
                         if befehlIter >= len(dictynum):
                                 if getattr(threading.currentThread(), "loop", True) and not getattr(threading.currentThread(), "finsignal", False):
                                         befehlIter = 0
                                 else:
                                         finished = True
 
-        t4.change = True
-        t5.change = True
-                
-        print("Active Threads: " + str(threading.activeCount()))
+        # Terminate any threads started from here asap, only done when change is indicated
+        commandThread.change = True
+        listThread.change = True
+
+        if debug: print("Active Threads: " + str(threading.activeCount()))
         
         return
-def brightnessLoop():
-        try:
-                isAlive = False
-                while True:
-                        global befehlIterable
-                        global t3
-
-                        if getattr(threading.currentThread(), "terminate", False): return
-                        
-                        f = open("/var/www/html/led-server/setting_change.txt", "r")
-                        try:
-                                change = json.load(f)['change']
-                        except ValueError:
-                                change = 0
-                        f.close()
-                        
-                        if change:
-                                t3.change = True
-                                isAlive = False
-
-                                f = open("/var/www/html/led-server/setting.txt", "r")
-                                try: dicti = json.load(f)
-                                except ValueError: dicti = {}
-                                f.close()
-
-                                f = open("/var/www/html/led-server/setting_change.txt", "w")
-                                json.dump({'change':0}, f)
-                                f.close()
-
-                                if dicti.has_key("brightness"):
-                                        strip.setBrightness(int(dicti["brightness"]))
-                                        settings['brightness'] = int(dicti["brightness"])
-                                if dicti.has_key("led_count"):
-                                        settings['led_count'] = int(dicti["led_count"])
-
-                                f = open("/var/www/html/led-server/settings.txt", "w")
-                                f.write(json.dumps(settings))
-                                f.close()
-                        
-                        
-
-        except KeyboardInterrupt:
-                print("Terminating programm")
 
 # Main program logic follows:
 if __name__ == '__main__':
-        f = open("/var/www/html/led-server/change.txt", "w")
-        json.dump({'change':1}, f)
-        f.close()
+        # Reactivating last settings and command change, also loading settings from non php modified file
+        command_change_f = open("/var/www/html/led-server/change.txt", "w")
+        setting_change_f = open("/var/www/html/led-server/setting_change.txt", "w")
+        settings_f = open("/var/www/html/led-server/settings.txt", "r")
 
-        f = open("/var/www/html/led-server/setting_change.txt", "w")
-        json.dump({'change':1}, f)
-        f.close()
+        json.dump({'change':1}, command_change_f)
+        json.dump({'change':1}, setting_change_f)
+        settings = json.loads(settings_f.read())
 
-        f = open("/var/www/html/led-server/settings.txt", "r")
-        settings = json.loads(f.read())
-        f.close()
+        command_change_f.close()
+        setting_change_f.close()
+        settings_f.close()
 
+        # Loading standard led config, is changed whenever more lamps are built
         settings['led_config'] = load_led_config()
-        
-        ##################################################################################################################################################################
+        if debug: print(settings['led_config'])
 
-        # Create NeoPixel object with appropriate configuration.
+        ############################################################################################################################################################################
+
+        # Create NeoPixel object with appropriate configuration
         strip = Adafruit_NeoPixel(settings.get('led_count', LED_COUNT), LED_PIN, LED_FREQ_HZ, LED_DMA, LED_INVERT, settings.get('brightness', LED_BRIGHTNESS), LED_CHANNEL)
-        # Intialize the library (must be called once before other functions).
+        # Intialize the library (must be called once before other functions)
         strip.begin()
 
-        print('Becca said hi!')
+        # Include greetings from gf bc thats her wish
+        if not debug: print('Becca said hi!')
 
-        t = threading.Thread(target=requestLoop)
-        t.start()
-        t1 = threading.Thread(target=brightnessLoop)
-        t1.start()
-        t.join()
-        t1.terminate = True
+        requestLoop()
         
-        f = open("/var/www/html/led-server/befehl.txt", "w")
-        f.write('[[{"command":"rainbow","args":{"wait_ms":0}}]]')
-        f.close()
+        # This part is reached if the lamp is shut down via the app, rather than turning it off,
+        # meaning it now defaults to a known working command, as seen below
+        command_f = open("/var/www/html/led-server/befehl.txt", "w")
+        json.dump([[{"command":"rainbow","args":{"wait_ms":0}}]], command_f)
+        command_f.close()
 
-        f = open("/var/www/html/led-server/change.txt", "w")
-        json.dump({'change':1}, f)
-        f.close()
+        command_change_f = open("/var/www/html/led-server/change.txt", "w")
+        json.dump({'change':1}, command_change_f)
+        command_change_f.close()
 
         """
         f = open("/var/www/html/led-server/setting.txt", "w")
