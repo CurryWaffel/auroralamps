@@ -22,7 +22,7 @@ LED_CHANNEL = 0 # set to '1' for GPIOs 13, 19, 41, 45 or 53
 # Initalization on global variables
 settings = {}
 dicty = {}
-mainListThread = threading.Thread()
+listThreads = []
 
 debug = True
 
@@ -297,16 +297,16 @@ def load_led_config():
 def requestLoop():
         while True:
                 global dicty
-                global mainListThread
+                global listThreads
                 
                 # Loading changes on both commands and settings
                 command_change_f = open("/var/www/html/led-server/change.txt", "r")
                 setting_change_f = open("/var/www/html/led-server/setting_change.txt", "r")
                 try: command_change = json.load(command_change_f)['change']
-                except ValueError: change = 0
+                except ValueError: command_change = 0
 
                 try: setting_change = json.load(setting_change_f)['change']
-                except ValueError: change2 = 0
+                except ValueError: setting_change = 0
 
                 command_change_f.close()
                 setting_change_f.close()
@@ -322,20 +322,24 @@ def requestLoop():
                         if (debug): print(dicty)
                         command_f.close()
 
-                        mainListThread.change = True
-
                         # Terminate the loop, eq. to "STOP" in the app
-                        if dicty[0][0]['command'] == "terminate": return
+                        if len(dicty) == 0 or dicty[0][0]['command'] == "terminate": return
 
                         # Unmarking change in change file
                         command_change_f = open("/var/www/html/led-server/change.txt", "w")
                         json.dump({'change':0}, command_change_f)
                         command_change_f.close()
                         
-                        # Start a new thread with the command loop, start with first column of commands
-                        mainListThread = threading.Thread(target=listloop, args=tuple([dicty[0]]))
-                        mainListThread.daemon = True
-                        mainListThread.start()
+                        # Stop old threads
+                        for i in listThreads: i.change = True
+                        listThreads = []
+
+                        # Start new threads with the command loop, one thread for each of the partCommandLists
+                        for cmdList in dicty:
+                                listThread = threading.Thread(target=listloop, args=tuple([cmdList]))
+                                listThread.daemon = True
+                                listThread.start()
+                                listThreads.append(listThread)
                 
                 # Change Settings if there is any change
                 if setting_change:
@@ -370,51 +374,23 @@ def listloop(dictynum):
         befehlIter = 0
         
         commandThread = threading.Thread() # Command thread for this list
-        listThread = threading.Thread() # New list thread that can be started from this list
-
-        # Indicator if the current list is finished
-        finished = False
 
         # Repeat while no change is indicated
         while not getattr(threading.currentThread(), "change", False):
                 # Only do something while the command thread for this list isnt active anymore
-                if not commandThread.isAlive():
-                        # If the list is done and not looped, break
-                        if finished: break
-
-                        # Processing current item in the command list
-                        currentItem = dictynum[befehlIter]
-                        if currentItem['command'] == "split":
-                                # Splitting means a new list thread is started using the list number indicated in /args/newList
-                                listThread = threading.Thread(target=listloop, args=tuple([dicty[currentItem['args']['newList']]]))
-                                listThread.loop = currentItem['args']['looplist']
-                                listThread.daemon = True
-                                listThread.start()
-                        elif currentItem['command'] == "join":
-                                # Joining means depending on the configuration, current thread either waits or cancels processing
-                                # of the list thread that was started fomr this thread
-                                if not currentItem['args']['waitlist']: listThread.change = True
-                                elif listThread.loop: listThread.finsignal = True
-                                listThread.join()
-                        else:
-                                commandThread = threading.Thread(target=getattr(StripMethods, currentItem['command']), args=tuple([currentItem['args']]))
-                                commandThread.daemon = True
-                                commandThread.start()
+                if not commandThread.isAlive():                        
+                        commandThread = threading.Thread(target=getattr(StripMethods, dictynum[befehlIter]['command']), args=tuple([dictynum[befehlIter]['args']]))
+                        commandThread.daemon = True
+                        commandThread.start()
                         
                         # Update the iterating variable
                         befehlIter += 1
-                        
-                        # If the end of the list is reached, either reset the iterating variable or terminate the list after current command is processed,
-                        # depending on configuration
+                        # If the end of the list is reached reset the iterating variable
                         if befehlIter >= len(dictynum):
-                                if getattr(threading.currentThread(), "loop", True) and not getattr(threading.currentThread(), "finsignal", False):
-                                        befehlIter = 0
-                                else:
-                                        finished = True
+                                befehlIter = 0
 
-        # Terminate any threads started from here asap, only done when change is indicated
+        # Terminate any thread started from here asap, only reached when change is indicated
         commandThread.change = True
-        listThread.change = True
 
         if debug: print("Active Threads: " + str(threading.activeCount()))
         
